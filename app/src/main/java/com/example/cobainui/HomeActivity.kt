@@ -1,22 +1,23 @@
 package com.example.cobainui
 
-import android.widget.ProgressBar
-import android.view.View
-import android.provider.MediaStore
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import android.view.LayoutInflater
+import android.view.View
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.res.ResourcesCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -28,12 +29,12 @@ import java.util.Calendar
 class HomeActivity : AppCompatActivity() {
 
     // --- DEKLARASI VARIABEL UTAMA ---
+    private lateinit var foodDetector: FoodDetector
     private lateinit var auth: FirebaseAuth
     private lateinit var greetingText: TextView
     private var backPressedOnce = false
-    private lateinit var foodClassifier: FoodClassifier
 
-    // Peluncur Izin Kamera
+    // Peluncur Izin Kamera (Untuk pemindaian statis, bisa jadi tidak diperlukan lagi jika hanya live)
     private val requestCameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -79,7 +80,7 @@ class HomeActivity : AppCompatActivity() {
 
         auth = FirebaseAuth.getInstance()
         greetingText = findViewById(R.id.greeting_text)
-        foodClassifier = FoodClassifier(this)
+        foodDetector = FoodDetector(this)
 
         val userAvatar = findViewById<ImageView>(R.id.user_avatar)
 
@@ -293,8 +294,11 @@ class HomeActivity : AppCompatActivity() {
             }
         }
 
+        // --- PERUBAHAN UTAMA ---
         navAiIcon.setOnClickListener {
-            showImageSourceOptions()
+            // Langsung buka CameraActivity untuk live detection
+            val intent = Intent(this, CameraActivity::class.java)
+            startActivity(intent)
         }
 
         navScanIcon.setOnClickListener {
@@ -322,27 +326,6 @@ class HomeActivity : AppCompatActivity() {
                 overridePendingTransition(android.R.anim.slide_in_left, android.R.anim.slide_out_right)
             }
         }
-    }
-
-    private fun showImageSourceOptions() {
-        val dialog = BottomSheetDialog(this)
-        val view = layoutInflater.inflate(R.layout.layout_image_source_selection, null)
-
-        val btnCamera = view.findViewById<View>(R.id.option_camera)
-        val btnGallery = view.findViewById<View>(R.id.option_gallery)
-
-        btnCamera?.setOnClickListener {
-            dialog.dismiss()
-            requestCameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
-        }
-
-        btnGallery?.setOnClickListener {
-            dialog.dismiss()
-            openGallery()
-        }
-
-        dialog.setContentView(view)
-        dialog.show()
     }
 
     private fun openGallery() {
@@ -400,54 +383,55 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun showScanningResultSheet(bitmap: Bitmap) {
-        val dialog = BottomSheetDialog(this)
+        val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.layout_scanning_result, null)
-        val ivPreview = view.findViewById<ImageView>(R.id.iv_scan_preview)
-        val tvStatus = view.findViewById<TextView>(R.id.tv_scan_status)
-        val btnAdd = view.findViewById<MaterialButton>(R.id.btn_add_to_log)
 
-        ivPreview.setImageBitmap(bitmap)
+        val ivPreview = view.findViewById<android.widget.ImageView>(R.id.iv_scan_preview)
+        val tvStatus = view.findViewById<android.widget.TextView>(R.id.tv_scan_status)
+        val btnAdd = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_add_to_log)
 
-        Handler(Looper.getMainLooper()).postDelayed({
-            // 1. Klasifikasikan gambar menggunakan AI
-            val detectedFood = foodClassifier.classify(bitmap)
+        val results = foodDetector.detect(bitmap)
 
-            val cal = 200f
-            val addCarbs = 30f
-            val addProt = 25f
-            val addSugar = 5f
-            val addFat = 12f
-
-            // 2. Tampilkan Nama Makanan hasil AI
-            tvStatus.text = "Terdeteksi: $detectedFood\n" +
-                    "Estimasi: ${cal.toInt()} kkal\n" +
-                    "Carbs: ${addCarbs.toInt()}g | Prot: ${addProt.toInt()}g\n" +
-                    "Sugar: ${addSugar.toInt()}g | Fat: ${addFat.toInt()}g"
-
+        if (results.isNotEmpty()) {
+            val result = results[0]
+            val bitmapWithBox = drawDetectionBox(bitmap, result)
+            ivPreview.setImageBitmap(bitmapWithBox)
+            // Menampilkan label dan confidence
+            val confidencePercentage = (result.confidence * 100).toInt()
+            tvStatus.text = "Terdeteksi: ${result.label} ($confidencePercentage%)\nEstimasi: 250 kkal"
+            tvStatus.typeface = ResourcesCompat.getFont(this, R.font.actor)
             btnAdd.visibility = View.VISIBLE
+        } else {
+            ivPreview.setImageBitmap(bitmap)
+            tvStatus.text = "Makanan tidak ditemukan.\nCoba foto lebih dekat."
+            btnAdd.visibility = View.GONE
+        }
 
-            btnAdd.setOnClickListener {
-                val pref = getSharedPreferences("UserStats", MODE_PRIVATE)
-                val editor = pref.edit()
-                val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                val currentTime = sdf.format(java.util.Date())
-                val foodEntry = "$detectedFood|$currentTime|${cal.toInt()} kkal|${addCarbs.toInt()}g C|${addProt.toInt()}g P"
-                val oldHistory = pref.getString("daily_food_history", "")
-                val newHistory = if (oldHistory.isNullOrEmpty()) foodEntry else "$oldHistory#$foodEntry"
-                editor.putString("daily_food_history", newHistory)
-                editor.putFloat("consumed_calories", pref.getFloat("consumed_calories", 0f) + cal)
-                editor.putFloat("consumed_carbs", pref.getFloat("consumed_carbs", 0f) + addCarbs)
-                editor.putFloat("consumed_protein", pref.getFloat("consumed_protein", 0f) + addProt)
-                editor.putFloat("consumed_sugar", pref.getFloat("consumed_sugar", 0f) + addSugar)
-                editor.putFloat("consumed_fat", pref.getFloat("consumed_fat", 0f) + addFat)
-                editor.apply()
-                setupCaloriesProgressBar()
-                setupNutrientsProgressBar()
-                dialog.dismiss()
-                showCustomToast("Berhasil dicatat jam $currentTime")
-            }
-        }, 2000)
         dialog.setContentView(view)
         dialog.show()
+    }
+
+    private fun drawDetectionBox(bitmap: Bitmap, detection: Detection): Bitmap {
+        val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = android.graphics.Canvas(mutableBitmap)
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = 10f
+        }
+
+        // Skalakan koordinat bbox dari ukuran model (640) ke ukuran bitmap asli
+        val scaleX = bitmap.width.toFloat() / 640f
+        val scaleY = bitmap.height.toFloat() / 640f
+
+        val scaledBox = android.graphics.RectF(
+            detection.bbox.left * scaleX,
+            detection.bbox.top * scaleY,
+            detection.bbox.right * scaleX,
+            detection.bbox.bottom * scaleY
+        )
+
+        canvas.drawRect(scaledBox, paint)
+        return mutableBitmap
     }
 }

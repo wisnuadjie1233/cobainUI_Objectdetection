@@ -1,13 +1,2 @@
-0 Ayam goreng
-1 Burger
-2 French Fries
-3 Gado-Gado
-4 Ikan Goreng
-5 Mie Goreng 
-6 Nasi Goreng
-7 Nasi Padang
-8 Pizza
-9 Rawon
-10 Rendang
-11 Sate
-12 Soto
+Burger
+

@@ -430,6 +430,7 @@
                 android:src="@drawable/scan"
                 app:tint="@color/nav_icon_color_selector" />
 
+
             <ImageView
                 android:id="@+id/nav_scan_icon"
                 android:layout_width="45dp"
@@ -461,6 +462,26 @@
                 app:tint="@color/nav_icon_color_selector" />
 
         </LinearLayout>
+
+        <androidx.camera.view.PreviewView
+            android:id="@+id/viewFinder"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"/>
+
+        <!-- Tambahkan ini jika belum ada -->
+        <com.example.cobainui.OverlayView
+            android:id="@+id/overlayView"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintTop_toTopOf="@id/viewFinder"
+            app:layout_constraintStart_toStartOf="@id/viewFinder"
+            app:layout_constraintEnd_toEndOf="@id/viewFinder"
+            app:layout_constraintBottom_toBottomOf="@id/viewFinder"/>
+
 
     </com.google.android.material.card.MaterialCardView>
 
