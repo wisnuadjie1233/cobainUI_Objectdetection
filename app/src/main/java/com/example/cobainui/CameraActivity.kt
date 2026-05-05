@@ -58,14 +58,13 @@ class CameraActivity : AppCompatActivity() {
                         if (bitmap != null) {
                             val detections = foodDetector.detect(bitmap)
                             runOnUiThread {
-                                // Mengirim hasil deteksi dan dimensi GAMBAR ASLI (bukan dari model)
-                                // Dimensi gambar asli digunakan untuk penskalaan yang benar di OverlayView
-                                overlayView.setResults(detections, 640, 640)
+                                overlayView.setResults(detections)
                             }
                         }
-                        imageProxy.close()
+                        imageProxy.close()  // <-- harus selalu di-close
                     }
                 }
+
 
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 

@@ -47,6 +47,9 @@ android {
             useLegacyPackaging = true
         }
     }
+    buildFeatures {
+        mlModelBinding = true
+    }
 }
 
 dependencies {
