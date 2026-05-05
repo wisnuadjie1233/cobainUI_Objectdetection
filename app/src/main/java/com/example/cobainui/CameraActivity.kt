@@ -58,11 +58,13 @@ class CameraActivity : AppCompatActivity() {
                         if (bitmap != null) {
                             val detections = foodDetector.detect(bitmap)
                             runOnUiThread {
-                                overlayView.setResults(detections)
+                                overlayView.setResults(detections, bitmap.width, bitmap.height)
                             }
                         }
-                        imageProxy.close()  // <-- harus selalu di-close
+                        imageProxy.close()
                     }
+
+
                 }
 
 
