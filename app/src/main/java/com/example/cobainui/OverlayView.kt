@@ -18,7 +18,7 @@ class OverlayView @JvmOverloads constructor(
     private var frameHeight: Int = 1
 
     private val boxPaint = Paint().apply {
-        color = Color.RED
+        color = Color.BLUE
         style = Paint.Style.STROKE
         strokeWidth = 8f
     }
@@ -62,4 +62,5 @@ class OverlayView @JvmOverloads constructor(
             )
         }
     }
+
 }

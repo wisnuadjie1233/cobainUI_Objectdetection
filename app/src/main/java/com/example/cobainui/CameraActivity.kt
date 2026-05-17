@@ -14,6 +14,8 @@ import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import java.util.concurrent.Executors
+import android.graphics.Bitmap
+import android.graphics.Matrix
 
 class CameraActivity : AppCompatActivity() {
 
@@ -28,6 +30,9 @@ class CameraActivity : AppCompatActivity() {
         viewFinder = findViewById(R.id.viewFinder)
         overlayView = findViewById(R.id.overlayView)
 
+        // 🔑 TAMBAHKAN INI
+        viewFinder.scaleType = PreviewView.ScaleType.FIT_CENTER
+
         foodDetector = FoodDetector(this)
 
         if (allPermissionsGranted()) {
@@ -38,6 +43,7 @@ class CameraActivity : AppCompatActivity() {
             )
         }
     }
+
 
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
@@ -56,13 +62,18 @@ class CameraActivity : AppCompatActivity() {
                     it.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
                         val bitmap = imageProxy.toBitmap()
                         if (bitmap != null) {
-                            val detections = foodDetector.detect(bitmap)
+                            // 🔑 ROTASI: sensor HP biasanya landscape, layar portrait
+                            val matrix = Matrix().apply { postRotate(imageProxy.imageInfo.rotationDegrees.toFloat()) }
+                            val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+
+                            val detections = foodDetector.detect(rotated)
                             runOnUiThread {
-                                overlayView.setResults(detections, bitmap.width, bitmap.height)
+                                overlayView.setResults(detections, rotated.width, rotated.height)
                             }
                         }
                         imageProxy.close()
                     }
+
 
 
                 }

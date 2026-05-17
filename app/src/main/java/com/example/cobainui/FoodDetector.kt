@@ -18,6 +18,15 @@ data class Detection(
     val bbox: RectF
 )
 
+private data class Prep(
+    val buffer: ByteBuffer,
+    val scale: Float,
+    val padX: Float,
+    val padY: Float,
+    val origW: Int,
+    val origH: Int
+)
+
 class FoodDetector(context: Context) {
     private val interpreter: Interpreter
     private val inputSize = 640
@@ -30,43 +39,55 @@ class FoodDetector(context: Context) {
         interpreter = Interpreter(loadModelFile(context, "best_float32.tflite"))
         labels = context.assets.open("labels.txt").bufferedReader().readLines()
         numClasses = labels.size
-        Log.d("YOLO", "Labels: $labels")
-
-        val outputShape = interpreter.getOutputTensor(0).shape()
-        Log.d("YOLO", "Output shape: ${outputShape.contentToString()}")
+        Log.d("YOLO", "Labels: $labels | Output shape: ${interpreter.getOutputTensor(0).shape().contentToString()}")
     }
 
     private fun loadModelFile(context: Context, modelPath: String): MappedByteBuffer {
         val fd = context.assets.openFd(modelPath)
         val stream = FileInputStream(fd.fileDescriptor)
-        return stream.channel.map(
-            FileChannel.MapMode.READ_ONLY,
-            fd.startOffset,
-            fd.declaredLength
-        )
+        return stream.channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
     }
 
-    private fun preprocess(bitmap: Bitmap): ByteBuffer {
-        val scaled = Bitmap.createScaledBitmap(bitmap, inputSize, inputSize, true)
+    /** Letterbox: jaga aspek rasio, pad abu-abu 114 */
+    private fun preprocess(bitmap: Bitmap): Prep {
+        val scale = min(inputSize.toFloat() / bitmap.width, inputSize.toFloat() / bitmap.height)
+        val newW = (bitmap.width * scale).toInt()
+        val newH = (bitmap.height * scale).toInt()
+
+        val scaled = Bitmap.createScaledBitmap(bitmap, newW, newH, true)
+        val padded = Bitmap.createBitmap(inputSize, inputSize, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(padded)
+        canvas.drawColor(Color.rgb(114, 114, 114))
+        canvas.drawBitmap(scaled, (inputSize - newW) / 2f, (inputSize - newH) / 2f, null)
+
         val buffer = ByteBuffer.allocateDirect(4 * 1 * inputSize * inputSize * 3)
         buffer.order(ByteOrder.nativeOrder())
         val pixels = IntArray(inputSize * inputSize)
-        scaled.getPixels(pixels, 0, inputSize, 0, 0, inputSize, inputSize)
+        padded.getPixels(pixels, 0, inputSize, 0, 0, inputSize, inputSize)
+
         for (p in pixels) {
             buffer.putFloat((p shr 16 and 0xFF) / 255f)
             buffer.putFloat((p shr 8 and 0xFF) / 255f)
             buffer.putFloat((p and 0xFF) / 255f)
         }
-        return buffer
+
+        return Prep(
+            buffer = buffer,
+            scale = scale,
+            padX = (inputSize - newW) / 2f,
+            padY = (inputSize - newH) / 2f,
+            origW = bitmap.width,
+            origH = bitmap.height
+        )
     }
 
     fun detect(bitmap: Bitmap): List<Detection> {
-        val input = preprocess(bitmap)
+        val prep = preprocess(bitmap)
         val shape = interpreter.getOutputTensor(0).shape()
 
         return when {
-            shape.size == 3 && shape[2] == 6 -> detectEndToEnd(input, bitmap)
-            shape.size == 3 && shape[1] == numClasses + 4 -> detectRaw(input, bitmap)
+            shape.size == 3 && shape[2] == 6 -> detectEndToEnd(prep)
+            shape.size == 3 && shape[1] == numClasses + 4 -> detectRaw(prep)
             else -> {
                 Log.e("YOLO", "Unknown shape: ${shape.contentToString()}")
                 emptyList()
@@ -74,15 +95,47 @@ class FoodDetector(context: Context) {
         }
     }
 
-    private fun detectRaw(input: ByteBuffer, bitmap: Bitmap): List<Detection> {
+    /** Model sudah include NMS — output [1, 300, 6] */
+    private fun detectEndToEnd(prep: Prep): List<Detection> {
+        val output = Array(1) { Array(300) { FloatArray(6) } }
+        interpreter.run(prep.buffer, output)
+
+        val list = mutableListOf<Detection>()
+        for (i in 0 until 300) {
+            val conf = output[0][i][4]
+            if (conf > confThreshold) {
+                val c = output[0][i][5].toInt()
+
+                // Koordinat model dalam space 640×640 letterbox → kembalikan ke gambar asli
+                val x1 = (output[0][i][0] * inputSize - prep.padX) / prep.scale
+                val y1 = (output[0][i][1] * inputSize - prep.padY) / prep.scale
+                val x2 = (output[0][i][2] * inputSize - prep.padX) / prep.scale
+                val y2 = (output[0][i][3] * inputSize - prep.padY) / prep.scale
+
+                list.add(
+                    Detection(
+                        label = labels.getOrElse(c) { "?" },
+                        confidence = conf,
+                        bbox = RectF(
+                            x1.coerceIn(0f, prep.origW.toFloat()),
+                            y1.coerceIn(0f, prep.origH.toFloat()),
+                            x2.coerceIn(0f, prep.origW.toFloat()),
+                            y2.coerceIn(0f, prep.origH.toFloat())
+                        )
+                    )
+                )
+            }
+        }
+        return list
+    }
+
+    /** Kalau model output raw [1, 84, 8400] */
+    private fun detectRaw(prep: Prep): List<Detection> {
         val numAnchors = 8400
         val output = Array(1) { Array(numClasses + 4) { FloatArray(numAnchors) } }
-        interpreter.run(input, output)
+        interpreter.run(prep.buffer, output)
 
         val candidates = mutableListOf<Detection>()
-        val scaleX = bitmap.width.toFloat() / inputSize
-        val scaleY = bitmap.height.toFloat() / inputSize
-
         for (i in 0 until numAnchors) {
             var bestScore = 0f
             var classId = -1
@@ -94,50 +147,32 @@ class FoodDetector(context: Context) {
                 }
             }
             if (bestScore > confThreshold) {
+                // ✅ URUTAN BENAR: x, y, w, h
                 val x = output[0][0][i]
                 val y = output[0][1][i]
                 val w = output[0][2][i]
                 val h = output[0][3][i]
+
+                val x1 = (x - w / 2) * inputSize
+                val y1 = (y - h / 2) * inputSize
+                val x2 = (x + w / 2) * inputSize
+                val y2 = (y + h / 2) * inputSize
+
                 candidates.add(
                     Detection(
                         label = labels[classId],
                         confidence = bestScore,
                         bbox = RectF(
-                            (x - w / 2) * scaleX,
-                            (y - h / 2) * scaleY,
-                            (x + w / 2) * scaleX,
-                            (y + h / 2) * scaleY
+                            (x1 - prep.padX) / prep.scale,
+                            (y1 - prep.padY) / prep.scale,
+                            (x2 - prep.padX) / prep.scale,
+                            (y2 - prep.padY) / prep.scale
                         )
                     )
                 )
             }
         }
         return applyNMS(candidates)
-    }
-
-    private fun detectEndToEnd(input: ByteBuffer, bitmap: Bitmap): List<Detection> {
-        val output = Array(1) { Array(300) { FloatArray(6) } }  // <- ganti 100 jadi 300
-        interpreter.run(input, output)
-        val list = mutableListOf<Detection>()
-        for (i in 0 until 300) {  // <- ganti 100 jadi 300
-            val conf = output[0][i][4]
-            if (conf > confThreshold) {
-                val c = output[0][i][5].toInt()
-                list.add(
-                    Detection(
-                        label = labels.getOrElse(c) { "?" },
-                        confidence = conf,
-                        bbox = RectF(
-                            output[0][i][0] * bitmap.width,
-                            output[0][i][1] * bitmap.height,
-                            output[0][i][2] * bitmap.width,
-                            output[0][i][3] * bitmap.height
-                        )
-                    )
-                )
-            }
-        }
-        return list
     }
 
 
