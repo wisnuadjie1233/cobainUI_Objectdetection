@@ -1,5 +1,10 @@
 package com.example.cobainui
 
+import android.widget.Button
+import androidx.appcompat.app.AlertDialog
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -23,6 +28,14 @@ class CameraActivity : AppCompatActivity() {
     private lateinit var overlayView: OverlayView
     private lateinit var viewFinder: PreviewView
 
+    // 🔑 TAMBAHKAN: simpan hasil deteksi terakhir dari analyzer
+    private var latestDetections: List<Detection> = emptyList()
+    private var latestFrameWidth: Int = 0
+    private var latestFrameHeight: Int = 0
+
+    // 🔑 1. TAMBAHKAN INI
+    private var imageCapture: ImageCapture? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_camera)
@@ -30,7 +43,6 @@ class CameraActivity : AppCompatActivity() {
         viewFinder = findViewById(R.id.viewFinder)
         overlayView = findViewById(R.id.overlayView)
 
-        // 🔑 TAMBAHKAN INI
         viewFinder.scaleType = PreviewView.ScaleType.FIT_CENTER
 
         foodDetector = FoodDetector(this)
@@ -42,8 +54,12 @@ class CameraActivity : AppCompatActivity() {
                 this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS
             )
         }
-    }
 
+        // 🔑 2. TAMBAHKAN TOMBOL JEPRET (contoh pakai fab/button)
+        findViewById<Button>(R.id.btnCapture).setOnClickListener {
+            takePhotoAndAnalyze()
+        }
+    }
 
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
@@ -55,6 +71,9 @@ class CameraActivity : AppCompatActivity() {
                 it.setSurfaceProvider(viewFinder.surfaceProvider)
             }
 
+            // 🔑 3. INISIALISASI ImageCapture
+            imageCapture = ImageCapture.Builder().build()
+
             val imageAnalyzer = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
@@ -62,33 +81,80 @@ class CameraActivity : AppCompatActivity() {
                     it.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
                         val bitmap = imageProxy.toBitmap()
                         if (bitmap != null) {
-                            // 🔑 ROTASI: sensor HP biasanya landscape, layar portrait
-                            val matrix = Matrix().apply { postRotate(imageProxy.imageInfo.rotationDegrees.toFloat()) }
-                            val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+                            val matrix = Matrix().apply {
+                                postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
+                            }
+                            val rotated = Bitmap.createBitmap(
+                                bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+                            )
 
                             val detections = foodDetector.detect(rotated)
+                            // 🔑 TAMBAHKAN: simpan hasil terakhir
+                            synchronized(this) {
+                                latestDetections = detections
+                                latestFrameWidth = rotated.width
+                                latestFrameHeight = rotated.height
+                            }
                             runOnUiThread {
                                 overlayView.setResults(detections, rotated.width, rotated.height)
                             }
                         }
                         imageProxy.close()
                     }
-
-
-
                 }
-
 
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
             try {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalyzer)
+                // 🔑 4. BIND imageCapture juga di sini
+                cameraProvider.bindToLifecycle(
+                    this, cameraSelector, preview, imageAnalyzer, imageCapture
+                )
             } catch (exc: Exception) {
                 Log.e(TAG, "Use case binding failed", exc)
             }
 
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    // 🔑 5. TAMBAHKAN FUNGSI INI
+    private fun takePhotoAndAnalyze() {
+        val detections = synchronized(this) { latestDetections }
+
+        if (detections.isEmpty()) {
+            Toast.makeText(this, "Tidak ada makanan yang terdeteksi di layar", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val countMap = detections.groupingBy { it.label }.eachCount()
+        val nutrition = calculateNutrition(countMap)
+
+        runOnUiThread {
+            showResultDialog(countMap, nutrition)
+        }
+    }
+
+
+    // 🔑 6. TAMBAHKAN FUNGSI INI
+    private fun showResultDialog(countMap: Map<String, Int>, nutrition: Nutrition) {
+        val message = buildString {
+            appendLine("📸 Terdeteksi:")
+            countMap.forEach { (food, count) ->
+                appendLine("• $food: $count porsi")
+            }
+            appendLine()
+            appendLine("🔥 Total Kalori: ${nutrition.calories} kkal")
+            appendLine("🧈 Lemak: %.1f g".format(nutrition.fat))
+            appendLine("🥩 Protein: %.1f g".format(nutrition.protein))
+            appendLine("🍚 Karbo: %.1f g".format(nutrition.carbs))
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Hasil Analisis Makanan")
+            .setMessage(message)
+            .setPositiveButton("Oke") { dialog, _ -> dialog.dismiss() }
+            .show()
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
@@ -115,3 +181,4 @@ class CameraActivity : AppCompatActivity() {
         private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
     }
 }
+

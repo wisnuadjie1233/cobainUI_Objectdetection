@@ -17,15 +17,20 @@ class OverlayView @JvmOverloads constructor(
     private var frameWidth: Int = 1
     private var frameHeight: Int = 1
 
+    // Box: Oranye cerah | Text: Putih dengan bayangan
     private val boxPaint = Paint().apply {
-        color = Color.BLUE
+        color = Color.rgb(255, 171, 64)   // Oranye modern
         style = Paint.Style.STROKE
-        strokeWidth = 8f
+        strokeWidth = 10f
+        isAntiAlias = true
     }
+
     private val textPaint = Paint().apply {
-        color = Color.RED
-        textSize = 55f
+        color = Color.WHITE
+        textSize = 48f
         isFakeBoldText = true
+        isAntiAlias = true
+        setShadowLayer(8f, 3f, 3f, Color.BLACK)
     }
 
     fun setResults(results: List<Detection>, sourceWidth: Int, sourceHeight: Int) {

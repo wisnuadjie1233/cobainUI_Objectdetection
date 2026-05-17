@@ -32,7 +32,7 @@ class FoodDetector(context: Context) {
     private val inputSize = 640
     private val labels: List<String>
     private val numClasses: Int
-    private val confThreshold = 0.5f
+    private val confThreshold = 0.7f
     private val iouThreshold = 0.45f
 
     init {
