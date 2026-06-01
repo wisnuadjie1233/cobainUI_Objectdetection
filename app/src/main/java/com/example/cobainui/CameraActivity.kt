@@ -153,9 +153,85 @@ class CameraActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle("Hasil Analisis Makanan")
             .setMessage(message)
-            .setPositiveButton("Oke") { dialog, _ -> dialog.dismiss() }
+            .setPositiveButton("Oke") { dialog, _ ->
+                // 1. UPDATE SHAREDPREFERENCES DULU (Untuk Update UI Home Cepat)
+                val sharedPref = getSharedPreferences("UserStats", MODE_PRIVATE)
+                val currentConsumed = sharedPref.getFloat("consumed_calories", 0f)
+                val newTotal = currentConsumed + nutrition.calories.toFloat()
+
+                with(sharedPref.edit()) {
+                    putFloat("consumed_calories", newTotal)
+                    apply()
+                }
+
+                // 2. SIMPAN KE FIRESTORE
+                saveNutritionToFirestore(nutrition, countMap.keys.toList())
+
+                dialog.dismiss()
+                // JANGAN panggil finish() di sini, biarkan fungsi saveNutritionToFirestore yang memanggilnya setelah sukses
+            }
+            .setNegativeButton("Batal") { dialog, _ ->
+                dialog.dismiss()
+            }
             .show()
     }
+
+    private fun saveNutritionToFirestore(nutrition: Nutrition, foodList: List<String>) {
+        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+        val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+
+        if (userId == null) {
+            Toast.makeText(this, "Gagal simpan: User tidak login", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+
+        // Data History
+        val historyData = hashMapOf(
+            "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+            "calories" to nutrition.calories,
+            "protein" to nutrition.protein,
+            "fat" to nutrition.fat,
+            "carbs" to nutrition.carbs,
+            "foods" to foodList
+        )
+
+        // Gunakan Batch atau jalankan sekaligus
+        val batch = db.batch()
+
+        val historyRef = db.collection("users").document(userId).collection("history").document()
+        batch.set(historyRef, historyData)
+
+        val dailyRef = db.collection("users").document(userId).collection("daily_totals").document(today)
+
+        // Gunakan set dengan Merge agar tidak error jika dokumen belum ada
+        // Note: Untuk update angka akurat di Firestore, lebih baik pakai transaction seperti kodemu sebelumnya
+        // Tapi agar tidak "stuck", pastikan OnSuccessListener memanggil finish()
+
+        db.runTransaction { transaction ->
+            val snapshot = transaction.get(dailyRef)
+            if (!snapshot.exists()) {
+                transaction.set(dailyRef, hashMapOf(
+                    "totalCalories" to nutrition.calories,
+                    "totalProtein" to nutrition.protein,
+                    "totalFat" to nutrition.fat,
+                    "totalCarbs" to nutrition.carbs
+                ))
+            } else {
+                val oldCal = snapshot.getDouble("totalCalories") ?: 0.0
+                transaction.update(dailyRef, "totalCalories", oldCal + nutrition.calories)
+                // tambahkan update protein, fat, carb jika perlu
+            }
+        }.addOnSuccessListener {
+            Toast.makeText(this, "Berhasil dicatat!", Toast.LENGTH_SHORT).show()
+            finish() // <--- INI PENTING: Menutup kamera hanya setelah Firestore Berhasil
+        }.addOnFailureListener { e ->
+            Log.e("Firestore", "Gagal update data", e)
+            finish() // Tetap tutup meskipun gagal agar user kembali ke Home
+        }
+    }
+
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
