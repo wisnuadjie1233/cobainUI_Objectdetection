@@ -1,5 +1,6 @@
 package com.example.cobainui
 
+import android.widget.LinearLayout
 import android.os.Bundle
 import android.view.View
 import android.widget.ImageButton
@@ -91,17 +92,38 @@ class AnalysisHistoryActivity : AppCompatActivity() {
     }
 
     private fun displayFoodHistory(pref: android.content.SharedPreferences) {
-        val tvFoodList = findViewById<TextView>(R.id.tv_food_list)
+        val container = findViewById<LinearLayout>(R.id.container_food_history)
+        val tvEmpty = findViewById<TextView>(R.id.tv_empty_history)
+
+        // Bersihkan container dulu agar tidak double saat di-refresh
+        container?.removeAllViews()
+
         val data = pref.getString("daily_food_history", "")
+
         if (!data.isNullOrEmpty()) {
-            val build = StringBuilder()
-            data.split("#").forEach {
-                val d = it.split("|")
-                if (d.size >= 3) build.append("${d[1]}      ${d[0]}      ${d[2]}\n\n")
+            tvEmpty?.visibility = View.GONE
+
+            val entries = data.split("#")
+            entries.forEach { entry ->
+                val d = entry.split("|")
+                if (d.size >= 3) {
+                    // INFLATE (Ambil layout card yang kita buat tadi)
+                    val itemView = layoutInflater.inflate(R.layout.item_food_history, container, false)
+
+                    val tvMenu = itemView.findViewById<TextView>(R.id.item_tv_menu)
+                    val tvJam = itemView.findViewById<TextView>(R.id.item_tv_jam)
+                    val tvKalori = itemView.findViewById<TextView>(R.id.item_tv_kalori)
+
+                    tvMenu.text = d[0]   // Nama Makanan
+                    tvJam.text = d[1]    // Jam
+                    tvKalori.text = d[2] // Kalori (sudah termasuk kata "kkal")
+
+                    // Masukkan card ke dalam container utama
+                    container?.addView(itemView)
+                }
             }
-            tvFoodList?.text = build.toString()
         } else {
-            tvFoodList?.text = "Belum ada catatan makan hari ini."
+            tvEmpty?.visibility = View.VISIBLE
         }
     }
 

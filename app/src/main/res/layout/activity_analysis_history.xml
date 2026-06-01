@@ -586,24 +586,31 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="32dp"
-                android:layout_marginBottom="16dp"
                 android:text="Catatan Harian"
-                android:fontFamily="@font/actor"
+                android:textSize="18sp"
+                android:textStyle="bold"
                 android:textColor="?android:attr/textColorPrimary"
-                android:textSize="14sp" />
-
-            <!-- Area untuk List Riwayat -->
-            <!-- Ganti RecyclerView tadi dengan ini -->
-            <TextView
-                android:id="@+id/tv_food_list"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="12dp"
+                android:layout_marginStart="4dp" />
+            <!-- Cari bagian Catatan Harian, ganti TextView dengan ini -->
+            <LinearLayout
+                android:id="@+id/container_food_history"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="16dp"
-                android:text="Belum ada catatan makan hari ini."
-                android:fontFamily="@font/actor"
-                android:textColor="?android:attr/textColorPrimary"
-                android:textSize="14sp" />
+                android:orientation="vertical"
+                android:paddingBottom="20dp">
+
+                <!-- Pesan jika kosong -->
+                <TextView
+                    android:id="@+id/tv_empty_history"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Belum ada catatan makan hari ini."
+                    android:gravity="center"
+                    android:padding="20dp"
+                    android:visibility="gone" />
+            </LinearLayout>
 
         </LinearLayout>
     </ScrollView>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="12dp"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="2dp"
+    app:strokeWidth="1dp"
+    app:strokeColor="#E0E0E0">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:gravity="center_vertical">
+
+        <!-- JAM -->
+        <TextView
+            android:id="@+id/item_tv_jam"
+            android:layout_width="50dp"
+            android:layout_height="wrap_content"
+            android:text="20:30"
+            android:textSize="12sp"
+            android:textColor="?android:attr/textColorSecondary"
+            android:fontFamily="sans-serif-medium" />
+
+        <!-- MENU MAKANAN -->
+        <TextView
+            android:id="@+id/item_tv_menu"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginHorizontal="8dp"
+            android:text="Nasi Putih, Ayam Goreng, Sambal"
+            android:textSize="14sp"
+            android:textColor="?android:attr/textColorPrimary"
+            android:fontFamily="sans-serif-medium" />
+
+        <!-- KALORI -->
+        <TextView
+            android:id="@+id/item_tv_kalori"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="600 kkal"
+            android:textSize="14sp"
+            android:textColor="#FF6B00"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>
